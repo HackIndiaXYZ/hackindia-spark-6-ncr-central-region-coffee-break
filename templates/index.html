@@ -1,0 +1,809 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASL Sign Language Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --surface: #12121a;
+    --surface2: #1a1a26;
+    --border: #2a2a3a;
+    --accent: #00e5ff;
+    --accent2: #7c3aed;
+    --green: #00e676;
+    --orange: #ff9800;
+    --text: #e8e8f0;
+    --muted: #6b6b8a;
+    --card: #16161f;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Background grid ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,229,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,229,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .app-wrapper {
+    position: relative;
+    z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 24px 20px;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .logo-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+
+  .logo h1 {
+    font-size: 1.5rem;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .logo span { color: var(--accent); }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main layout ── */
+  .main-grid {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* ── Left column ── */
+  .left-col { display: flex; flex-direction: column; gap: 16px; }
+
+  /* ── Camera + prediction row ── */
+  .cam-pred-row {
+    display: grid;
+    grid-template-columns: 1fr 220px;
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* ── Camera card ── */
+  .camera-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .camera-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .camera-card-header span {
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .rec-dot {
+    width: 8px; height: 8px;
+    background: #ff4444;
+    border-radius: 50%;
+    box-shadow: 0 0 8px #ff4444;
+    animation: pulse 1s infinite;
+  }
+
+  .video-wrapper {
+    position: relative;
+    background: #000;
+  }
+
+  #videoEl {
+    width: 100%;
+    display: block;
+    border-radius: 0;
+    transform: scaleX(-1);
+  }
+
+  #canvasEl { display: none; }
+
+  .video-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  /* Corner brackets */
+  .corner {
+    position: absolute;
+    width: 24px; height: 24px;
+    border-color: var(--accent);
+    border-style: solid;
+    opacity: 0.7;
+  }
+  .corner-tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; }
+  .corner-tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; }
+  .corner-bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; }
+  .corner-br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; }
+
+  /* ── Prediction panel ── */
+  .pred-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .pred-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 16px;
+    text-align: center;
+    transition: border-color 0.3s;
+  }
+
+  .pred-card.active { border-color: var(--accent); box-shadow: 0 0 20px rgba(0,229,255,0.1); }
+
+  .pred-label-sm {
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  .pred-letter {
+    font-size: 5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 30px rgba(0,229,255,0.4);
+    transition: all 0.2s;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .pred-letter.no-detect { color: var(--muted); font-size: 2.5rem; }
+
+  /* Confidence bar */
+  .conf-bar-wrap {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .conf-bar-label {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+  }
+
+  .conf-value { color: var(--text); font-weight: 500; }
+
+  .conf-track {
+    height: 8px;
+    background: var(--surface2);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  .conf-fill {
+    height: 100%;
+    border-radius: 4px;
+    width: 0%;
+    transition: width 0.3s ease, background 0.3s ease;
+    background: var(--accent);
+  }
+
+  /* Top 5 probs */
+  .top5-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .top5-title {
+    font-size: 0.7rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 10px;
+  }
+
+  .top5-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .top5-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--text);
+    width: 28px;
+    text-align: center;
+  }
+
+  .top5-track {
+    flex: 1;
+    height: 5px;
+    background: var(--surface2);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .top5-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: var(--accent2);
+    transition: width 0.3s ease;
+  }
+
+  .top5-pct {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--muted);
+    width: 36px;
+    text-align: right;
+  }
+
+  /* ── History bar ── */
+  .history-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 16px;
+  }
+
+  .history-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .history-title {
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .clear-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    padding: 3px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .clear-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .history-letters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 36px;
+  }
+
+  .history-chip {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text);
+    animation: chipIn 0.2s ease;
+  }
+
+  @keyframes chipIn {
+    from { opacity: 0; transform: scale(0.8); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .history-word {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 2px;
+    min-height: 28px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* ── Right column — Sign reference ── */
+  .ref-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    position: sticky;
+    top: 20px;
+  }
+
+  .ref-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ref-title {
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+
+  .ref-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 10px;
+    max-height: 580px;
+    overflow-y: auto;
+  }
+
+  .ref-grid::-webkit-scrollbar { width: 4px; }
+  .ref-grid::-webkit-scrollbar-track { background: transparent; }
+  .ref-grid::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .sign-tile {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 4px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+
+  .sign-tile:hover {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.05);
+    transform: scale(1.05);
+  }
+
+  .sign-tile.highlighted {
+    border-color: var(--accent);
+    background: rgba(0,229,255,0.12);
+    box-shadow: 0 0 12px rgba(0,229,255,0.2);
+  }
+
+  .sign-tile img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 5px;
+    display: block;
+    margin-bottom: 4px;
+    background: var(--surface);
+  }
+
+  .sign-tile .sign-img-placeholder {
+    width: 100%;
+    aspect-ratio: 1;
+    border-radius: 5px;
+    background: var(--surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    margin-bottom: 4px;
+  }
+
+  .sign-tile-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .sign-tile.highlighted .sign-tile-lbl { color: var(--accent); }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    gap: 10px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    font-family: 'Syne', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: none;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), #0097a7);
+    color: #000;
+  }
+  .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); }
+
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  .btn-secondary:hover { border-color: var(--accent); }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    font-size: 0.75rem;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted);
+  }
+
+  @media (max-width: 900px) {
+    .main-grid { grid-template-columns: 1fr; }
+    .cam-pred-row { grid-template-columns: 1fr; }
+    .ref-panel { position: static; }
+    .ref-grid { max-height: 300px; }
+  }
+</style>
+</head>
+<body>
+<div class="app-wrapper">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <div class="logo-icon">🤟</div>
+      <h1>ASL <span>Detector</span></h1>
+    </div>
+    <div class="status-badge">
+      <div class="status-dot"></div>
+      MODEL READY — {{ classes|length }} SIGNS
+    </div>
+  </header>
+
+  <!-- Main grid -->
+  <div class="main-grid">
+
+    <!-- LEFT COLUMN -->
+    <div class="left-col">
+
+      <!-- Camera + Prediction row -->
+      <div class="cam-pred-row">
+
+        <!-- Camera -->
+        <div class="camera-card">
+          <div class="camera-card-header">
+            <span>Live Feed</span>
+            <div class="rec-dot"></div>
+          </div>
+          <div class="video-wrapper">
+            <video id="videoEl" autoplay playsinline muted></video>
+            <canvas id="canvasEl"></canvas>
+            <div class="video-overlay">
+              <div class="corner corner-tl"></div>
+              <div class="corner corner-tr"></div>
+              <div class="corner corner-bl"></div>
+              <div class="corner corner-br"></div>
+            </div>
+          </div>
+          <div class="controls">
+            <button class="btn btn-primary" id="startBtn" onclick="startCamera()">Start Camera</button>
+            <button class="btn btn-secondary" onclick="addToHistory()">Add Letter</button>
+          </div>
+        </div>
+
+        <!-- Prediction panel -->
+        <div class="pred-panel">
+
+          <!-- Big letter -->
+          <div class="pred-card" id="predCard">
+            <div class="pred-label-sm">Detected Sign</div>
+            <div class="pred-letter no-detect" id="predLetter">—</div>
+          </div>
+
+          <!-- Confidence bar -->
+          <div class="conf-bar-wrap">
+            <div class="conf-bar-label">
+              <span>Confidence</span>
+              <span class="conf-value" id="confValue">0%</span>
+            </div>
+            <div class="conf-track">
+              <div class="conf-fill" id="confFill"></div>
+            </div>
+          </div>
+
+          <!-- Top 5 -->
+          <div class="top5-card">
+            <div class="top5-title">Top Predictions</div>
+            <div id="top5List"></div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="history-card">
+        <div class="history-header">
+          <div class="history-title">Sign History</div>
+          <button class="clear-btn" onclick="clearHistory()">Clear</button>
+        </div>
+        <div class="history-letters" id="historyLetters"></div>
+        <div class="history-word" id="historyWord"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN — Sign Reference -->
+    <div class="ref-panel">
+      <div class="ref-header">
+        <span class="ref-title">Sign Reference</span>
+        <span style="font-size:0.7rem;font-family:'DM Mono',monospace;color:var(--muted)">{{ classes|length }} signs</span>
+      </div>
+      <div class="ref-grid" id="refGrid">
+        {% for sign in classes %}
+        <div class="sign-tile" id="tile-{{ sign }}" title="{{ sign }}">
+          <img
+            src="/static/signs/{{ sign }}_test.jpg"
+            alt="{{ sign }}"
+            onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';"
+          >
+          <div class="sign-img-placeholder" style="display:none">{{ sign }}</div>
+          <div class="sign-tile-lbl">{{ sign }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    ASL Sign Language Detector &nbsp;·&nbsp; MediaPipe + scikit-learn &nbsp;·&nbsp; Real-time hand landmark classification
+  </footer>
+
+</div>
+
+<script>
+  let stream = null;
+  let predInterval = null;
+  let currentLabel = null;
+  let history = [];
+  let lastHighlighted = null;
+  const SMOOTHING = 5;
+  const predBuffer = [];
+
+  // ── Camera ────────────────────────────────────────────────────
+  async function startCamera() {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+      document.getElementById("videoEl").srcObject = stream;
+      document.getElementById("startBtn").textContent = "Camera On";
+      document.getElementById("startBtn").disabled = true;
+      predInterval = setInterval(sendFrame, 150);
+    } catch (e) {
+      alert("Could not access camera: " + e.message);
+    }
+  }
+
+  // ── Send frame to server ──────────────────────────────────────
+  function sendFrame() {
+    const video = document.getElementById("videoEl");
+    const canvas = document.getElementById("canvasEl");
+    if (video.readyState < 2) return;
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+
+    fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl })
+    })
+    .then(r => r.json())
+    .then(updateUI)
+    .catch(console.error);
+  }
+
+  // ── Update UI ─────────────────────────────────────────────────
+  function updateUI(data) {
+    const letterEl = document.getElementById("predLetter");
+    const confFill = document.getElementById("confFill");
+    const confValue = document.getElementById("confValue");
+    const predCard = document.getElementById("predCard");
+    const top5 = document.getElementById("top5List");
+
+    if (!data.detected) {
+      letterEl.textContent = "—";
+      letterEl.className = "pred-letter no-detect";
+      confFill.style.width = "0%";
+      confValue.textContent = "0%";
+      predCard.classList.remove("active");
+      top5.innerHTML = "";
+      highlightTile(null);
+      currentLabel = null;
+      return;
+    }
+
+    // Smoothing buffer
+    predBuffer.push(data.label);
+    if (predBuffer.length > SMOOTHING) predBuffer.shift();
+    const counts = {};
+    predBuffer.forEach(l => counts[l] = (counts[l] || 0) + 1);
+    const smoothed = Object.entries(counts).sort((a,b) => b[1]-a[1])[0][0];
+
+    currentLabel = smoothed;
+    letterEl.textContent = smoothed;
+    letterEl.className = "pred-letter";
+
+    const pct = Math.round(data.confidence * 100);
+    confFill.style.width = pct + "%";
+    confFill.style.background = pct > 80 ? "var(--green)" : pct > 50 ? "var(--accent)" : "var(--orange)";
+    confValue.textContent = pct + "%";
+    predCard.classList.add("active");
+
+    // Top 5
+    top5.innerHTML = data.all_probs.map(p => `
+      <div class="top5-row">
+        <span class="top5-lbl">${p.label}</span>
+        <div class="top5-track"><div class="top5-fill" style="width:${Math.round(p.prob*100)}%"></div></div>
+        <span class="top5-pct">${Math.round(p.prob*100)}%</span>
+      </div>
+    `).join("");
+
+    // Highlight reference tile
+    highlightTile(smoothed);
+  }
+
+  // ── Highlight sign tile ───────────────────────────────────────
+  function highlightTile(label) {
+    if (lastHighlighted) {
+      const prev = document.getElementById("tile-" + lastHighlighted);
+      if (prev) prev.classList.remove("highlighted");
+    }
+    if (label) {
+      const tile = document.getElementById("tile-" + label);
+      if (tile) {
+        tile.classList.add("highlighted");
+        tile.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+    }
+    lastHighlighted = label;
+  }
+
+  // ── History ───────────────────────────────────────────────────
+  function addToHistory() {
+    if (!currentLabel) return;
+    history.push(currentLabel);
+    renderHistory();
+  }
+
+  function clearHistory() {
+    history = [];
+    renderHistory();
+  }
+
+  function renderHistory() {
+    const container = document.getElementById("historyLetters");
+    const wordEl = document.getElementById("historyWord");
+    container.innerHTML = history.map(l =>
+      `<span class="history-chip">${l}</span>`
+    ).join("");
+    wordEl.textContent = history.filter(l => l !== "space").join("") || "";
+  }
+
+  // Auto-add on stable detection (hold same sign for 1.5s)
+  let holdTimer = null;
+  let holdLabel = null;
+  setInterval(() => {
+    if (currentLabel && currentLabel === holdLabel) return;
+    holdLabel = currentLabel;
+    clearTimeout(holdTimer);
+    if (currentLabel && currentLabel !== "space") {
+      holdTimer = setTimeout(() => {
+        if (currentLabel === holdLabel) addToHistory();
+      }, 1500);
+    }
+  }, 200);
+</script>
+</body>
+</html>

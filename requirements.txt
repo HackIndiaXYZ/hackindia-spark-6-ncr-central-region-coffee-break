@@ -1,0 +1,31 @@
+flask==3.0.3
+numpy==1.26.4
+opencv-python-headless==4.9.0.80
+mediapipe==0.10.9
+scikit-learn==1.4.2
+joblib==1.4.2
+gunicorn==22.0.0
+# ============================================================
+# Sign Language Detection - Stable Requirements
+# Python 3.10 | Windows + Conda | No TensorFlow needed
+# ============================================================
+
+# Core computer vision
+mediapipe==0.10.9
+opencv-python==4.9.0.80
+
+# Numpy pinned BEFORE mediapipe can upgrade it
+numpy==1.26.4
+
+# ML classifier (no TF needed)
+scikit-learn==1.4.2
+
+# Serialization
+joblib==1.4.2
+
+# Jupyter support
+ipykernel==6.29.4
+ipywidgets==8.1.2
+
+# Optional: progress bars in notebook
+tqdm==4.66.4
