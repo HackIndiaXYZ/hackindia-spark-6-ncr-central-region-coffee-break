@@ -1,7 +1,7 @@
 ---
 title: ASL Sign Language Detector
 emoji: 🤟
-colorFrom: cyan
+colorFrom: blue
 colorTo: purple
 sdk: docker
 pinned: false
